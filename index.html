@@ -7,9 +7,6 @@
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- Marker cluster -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -43,7 +40,7 @@
 
         <div class="field">
           <label for="filterState">State</label>
-          <select id="filterState" multiple size="6"></select>
+          <select id="filterState"></select>
         </div>
 
         <div class="field">
@@ -87,11 +84,19 @@
     </aside>
 
     <main id="map"></main>
+
+    <aside id="rightbar">
+      <section class="panel chart-panel">
+        <h2>Prospects by State</h2>
+        <div class="chart-wrap"><canvas id="stateChart"></canvas></div>
+        <p class="muted small" id="chartEmpty">Load a spreadsheet to see the breakdown.</p>
+      </section>
+    </aside>
   </div>
 
   <!-- Libraries -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
   <script src="app.js"></script>

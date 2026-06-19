@@ -46,7 +46,7 @@ const DEFAULT_COLOR = '#38bdf8';
 let ZIPS = {};
 let STATES = {};
 let allRows = [];          // normalized rows with geo info
-let map, cluster;
+let map, markerLayer, stateChart;
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -57,8 +57,7 @@ async function init() {
   initMap();
   await loadGeoData();
   wireUI();
-  loadRows(sampleData());
-  setStatus('Showing sample data — load your spreadsheet to replace it.');
+  setStatus('Load your spreadsheet to plot prospects.');
 }
 
 function initMap() {
@@ -67,8 +66,7 @@ function initMap() {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap contributors',
   }).addTo(map);
-  cluster = L.markerClusterGroup({ maxClusterRadius: 45 });
-  map.addLayer(cluster);
+  markerLayer = L.featureGroup().addTo(map); // individual markers, no clustering
 }
 
 async function loadGeoData() {
@@ -177,24 +175,24 @@ function applyFilters() {
   const f = readFilters();
   const rows = allRows.filter(r => matches(r, f));
 
-  cluster.clearLayers();
-  const markers = [];
+  markerLayer.clearLayers();
   let placed = 0;
   for (const r of rows) {
     if (!r._geo) continue;
     placed++;
-    markers.push(makeMarker(r));
+    makeMarker(r).addTo(markerLayer);
   }
-  cluster.addLayers(markers);
 
   const unplaced = rows.length - placed;
   document.getElementById('summary').textContent =
     `${rows.length} prospect${rows.length === 1 ? '' : 's'} shown` +
     (unplaced ? ` (${unplaced} without a mappable location)` : '');
 
-  if (markers.length) {
-    map.fitBounds(cluster.getBounds().pad(0.15), { maxZoom: 11 });
+  if (placed) {
+    map.fitBounds(markerLayer.getBounds().pad(0.15), { maxZoom: 11 });
   }
+
+  updateChart(rows);
 }
 
 function matches(r, f) {
@@ -202,7 +200,7 @@ function matches(r, f) {
     const hay = `${r.name} ${r.email} ${r.company}`.toLowerCase();
     if (!hay.includes(f.search)) return false;
   }
-  if (f.states.length && !f.states.includes(r.state)) return false;
+  if (f.state && r.state !== f.state) return false;
   if (f.role && r.role !== f.role) return false;
   if (f.company && r.company !== f.company) return false;
   if (f.proficiency && r.proficiency !== f.proficiency) return false;
@@ -265,7 +263,7 @@ function uniqueSorted(field) {
 }
 
 function populateFilters() {
-  fillMultiSelect('filterState', uniqueSorted('state'));
+  fillSelect('filterState', uniqueSorted('state'), 'All states');
   fillSelect('filterRole', uniqueSorted('role'), 'All roles');
   fillSelect('filterCompany', uniqueSorted('company'), 'All companies');
   fillSelect('filterProficiency', uniqueSorted('proficiency'), 'All proficiencies');
@@ -285,15 +283,10 @@ function fillSelect(id, values, allLabel) {
     values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
 }
 
-function fillMultiSelect(id, values) {
-  const sel = document.getElementById(id);
-  sel.innerHTML = values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
-}
-
 function readFilters() {
   return {
     search: document.getElementById('search').value.trim().toLowerCase(),
-    states: [...document.getElementById('filterState').selectedOptions].map(o => o.value),
+    state: document.getElementById('filterState').value,
     role: document.getElementById('filterRole').value,
     company: document.getElementById('filterCompany').value,
     proficiency: document.getElementById('filterProficiency').value,
@@ -310,6 +303,66 @@ function buildLegend() {
   ul.innerHTML = items.map(p =>
     `<li><span class="dot" style="background:${colorFor(p)}"></span>${escapeHtml(p)}</li>`
   ).join('') + `<li><span class="dot" style="background:${DEFAULT_COLOR}"></span>Other / unspecified</li>`;
+}
+
+// ---------------------------------------------------------------------------
+// Pie chart — prospects by state (reflects the active filters)
+// ---------------------------------------------------------------------------
+const CHART_COLORS = [
+  '#38bdf8', '#22c55e', '#eab308', '#f97316', '#ef4444', '#a855f7',
+  '#ec4899', '#14b8a6', '#84cc16', '#f59e0b', '#6366f1', '#06b6d4',
+];
+
+function updateChart(rows) {
+  const counts = {};
+  for (const r of rows) {
+    const s = r.state || 'Unknown';
+    counts[s] = (counts[s] || 0) + 1;
+  }
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+  const emptyMsg = document.getElementById('chartEmpty');
+  const canvas = document.getElementById('stateChart');
+  if (!entries.length) {
+    if (stateChart) { stateChart.destroy(); stateChart = null; }
+    emptyMsg.style.display = '';
+    canvas.style.display = 'none';
+    return;
+  }
+  emptyMsg.style.display = 'none';
+  canvas.style.display = '';
+
+  const labels = entries.map(e => e[0]);
+  const data = entries.map(e => e[1]);
+  const colors = labels.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
+
+  if (stateChart) {
+    stateChart.data.labels = labels;
+    stateChart.data.datasets[0].data = data;
+    stateChart.data.datasets[0].backgroundColor = colors;
+    stateChart.update();
+    return;
+  }
+
+  stateChart = new Chart(canvas.getContext('2d'), {
+    type: 'pie',
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: '#1e293b', borderWidth: 1 }] },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#e2e8f0', boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+              const pct = total ? Math.round((ctx.parsed / total) * 100) : 0;
+              return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+            },
+          },
+        },
+      },
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -330,8 +383,7 @@ function wireUI() {
 
   document.getElementById('resetFilters').addEventListener('click', () => {
     document.getElementById('search').value = '';
-    [...document.getElementById('filterState').options].forEach(o => o.selected = false);
-    ['filterRole', 'filterCompany', 'filterProficiency', 'filterCourse'].forEach(id =>
+    ['filterState', 'filterRole', 'filterCompany', 'filterProficiency', 'filterCourse'].forEach(id =>
       document.getElementById(id).value = '');
     prog.value = 0;
     document.getElementById('progressVal').textContent = '0%';
@@ -383,20 +435,4 @@ function escapeHtml(s) {
 function debounce(fn, ms) {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
-}
-
-// ---------------------------------------------------------------------------
-// Sample data (matches the provided Sheet1 format)
-// ---------------------------------------------------------------------------
-function sampleData() {
-  return [
-    { 'Full name': 'Jane Cooper', Email: 'jane@acme.com', Role: 'Controls Engineer', Company: 'Acme Automation', State: 'TX', 'Zip Code': '75201', 'Beckhoff Proficiency': 'Intermediate', 'Course name': 'TwinCAT 3 Basics', Enrolled: '2026-01-10', Started: '2026-01-12', Completed: '2026-02-01', Score: '88', 'Course progress': 100 },
-    { 'Full name': 'Marcus Lee', Email: 'marcus@nordic.io', Role: 'Automation Lead', Company: 'Nordic Systems', State: 'MN', 'Zip Code': '55401', 'Beckhoff Proficiency': 'Advanced', 'Course name': 'TwinCAT 3 Basics', Enrolled: '2026-02-03', Started: '2026-02-05', Completed: '', Score: '', 'Course progress': 60 },
-    { 'Full name': 'Priya Patel', Email: 'priya@westcoast.com', Role: 'Project Manager', Company: 'West Coast Integrators', State: 'CA', 'Zip Code': '94103', 'Beckhoff Proficiency': 'Beginner', 'Course name': 'PLC Fundamentals', Enrolled: '2026-03-01', Started: '', Completed: '', Score: '', 'Course progress': 0 },
-    { 'Full name': 'Tom Becker', Email: 'tom@greatlakes.com', Role: 'Controls Engineer', Company: 'Great Lakes Mfg', State: 'MI', 'Zip Code': '48226', 'Beckhoff Proficiency': 'Expert', 'Course name': 'Motion Control', Enrolled: '2025-11-15', Started: '2025-11-16', Completed: '2025-12-20', Score: '95', 'Course progress': 100 },
-    { 'Full name': 'Sara Nguyen', Email: 'sara@gulfauto.com', Role: 'Sales Engineer', Company: 'Gulf Automation', State: 'FL', 'Zip Code': '33101', 'Beckhoff Proficiency': 'Intermediate', 'Course name': 'PLC Fundamentals', Enrolled: '2026-04-10', Started: '2026-04-11', Completed: '', Score: '', 'Course progress': 35 },
-    { 'Full name': 'David Kim', Email: 'david@empire.com', Role: 'Automation Lead', Company: 'Empire Controls', State: 'NY', 'Zip Code': '10001', 'Beckhoff Proficiency': 'Advanced', 'Course name': 'Motion Control', Enrolled: '2026-01-22', Started: '2026-01-25', Completed: '', Score: '', 'Course progress': 75 },
-    { 'Full name': 'Emily Carter', Email: 'emily@rockymtn.com', Role: 'Controls Engineer', Company: 'Rocky Mountain Robotics', State: 'CO', 'Zip Code': '80202', 'Beckhoff Proficiency': 'Beginner', 'Course name': 'TwinCAT 3 Basics', Enrolled: '2026-05-02', Started: '2026-05-03', Completed: '', Score: '', 'Course progress': 20 },
-    { 'Full name': 'Luis Romero', Email: 'luis@deserttech.com', Role: 'Service Technician', Company: 'Desert Tech', State: 'AZ', 'Zip Code': '85004', 'Beckhoff Proficiency': 'None', 'Course name': 'PLC Fundamentals', Enrolled: '2026-06-01', Started: '', Completed: '', Score: '', 'Course progress': 0 },
-  ];
 }
