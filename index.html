@@ -86,6 +86,16 @@
     <main id="map"></main>
 
     <aside id="rightbar">
+      <section class="panel">
+        <div class="filter-head">
+          <h2>Download by State</h2>
+          <button id="clearStates" class="link-btn" type="button" style="display:none">Clear</button>
+        </div>
+        <p class="muted small">Click one or more states on the map to select them, then download.</p>
+        <div id="selectedChips" class="chips"></div>
+        <button id="downloadBtn" class="primary-btn" type="button" disabled>Download selected states</button>
+      </section>
+
       <section class="panel chart-panel">
         <h2>Prospects by State</h2>
         <div class="chart-wrap"><canvas id="stateChart"></canvas></div>
