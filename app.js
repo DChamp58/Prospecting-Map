@@ -55,13 +55,11 @@ function toAbbr(s) {
   return NAME_TO_ABBR[v.toLowerCase()] || v.toUpperCase();
 }
 
+const GREEN = '#22c55e', YELLOW = '#eab308', RED = '#ef4444';
 const PROFICIENCY_COLORS = {
-  'expert':       '#22c55e',
-  'advanced':     '#84cc16',
-  'intermediate': '#eab308',
-  'beginner':     '#f97316',
-  'novice':       '#f97316',
-  'none':         '#ef4444',
+  'new':          GREEN,   // new prospect
+  'intermediate': YELLOW,
+  'experienced':  RED,
 };
 const DEFAULT_COLOR = '#38bdf8';
 
@@ -317,7 +315,13 @@ function popupHtml(r) {
 }
 
 function colorFor(prof) {
-  return PROFICIENCY_COLORS[String(prof).trim().toLowerCase()] || DEFAULT_COLOR;
+  const p = String(prof).trim().toLowerCase();
+  if (!p) return DEFAULT_COLOR;
+  if (PROFICIENCY_COLORS[p]) return PROFICIENCY_COLORS[p];
+  if (p.includes('experien')) return RED;        // experienced / experience
+  if (p.includes('interm')) return YELLOW;       // intermediate
+  if (p.includes('new') || p.includes('prospect')) return GREEN; // new prospect
+  return DEFAULT_COLOR;
 }
 
 // ---------------------------------------------------------------------------
