@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prospecting Map</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Marker cluster -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <header class="brand">
+        <h1>Prospecting Map</h1>
+        <p class="muted">Plot prospects from your spreadsheet and filter them on the map.</p>
+      </header>
+
+      <section class="panel">
+        <label class="file-drop" id="fileDrop">
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden />
+          <strong>Load spreadsheet</strong>
+          <span class="muted">Drop your .xlsx here or click to browse</span>
+        </label>
+        <p class="muted small" id="dataStatus">Showing sample data.</p>
+      </section>
+
+      <section class="panel">
+        <div class="filter-head">
+          <h2>Filters</h2>
+          <button id="resetFilters" class="link-btn" type="button">Reset</button>
+        </div>
+
+        <div class="field">
+          <label for="search">Search (name / email / company)</label>
+          <input type="search" id="search" placeholder="Type to search…" />
+        </div>
+
+        <div class="field">
+          <label for="filterState">State</label>
+          <select id="filterState" multiple size="6"></select>
+        </div>
+
+        <div class="field">
+          <label for="filterRole">Role</label>
+          <select id="filterRole"></select>
+        </div>
+
+        <div class="field">
+          <label for="filterCompany">Company</label>
+          <select id="filterCompany"></select>
+        </div>
+
+        <div class="field">
+          <label for="filterProficiency">Beckhoff Proficiency</label>
+          <select id="filterProficiency"></select>
+        </div>
+
+        <div class="field" id="courseField">
+          <label for="filterCourse">Course name</label>
+          <select id="filterCourse"></select>
+        </div>
+
+        <div class="field" id="progressField">
+          <label for="filterProgress">Min course progress: <span id="progressVal">0%</span></label>
+          <input type="range" id="filterProgress" min="0" max="100" value="0" step="5" />
+        </div>
+
+        <div class="field checkbox" id="completedField">
+          <label><input type="checkbox" id="filterCompleted" /> Completed courses only</label>
+        </div>
+      </section>
+
+      <section class="panel" id="legendPanel">
+        <h2>Legend — Proficiency</h2>
+        <ul id="legend" class="legend"></ul>
+      </section>
+
+      <footer class="panel summary">
+        <span id="summary">0 prospects</span>
+      </footer>
+    </aside>
+
+    <main id="map"></main>
+  </div>
+
+  <!-- Libraries -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+  <script src="app.js"></script>
+</body>
+</html>
