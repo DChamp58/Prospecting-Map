@@ -30,6 +30,31 @@ const FIELD_ALIASES = {
   progress:    ['course progress', 'progress'],
 };
 
+const STATE_NAMES = {
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
+  CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', DC: 'District of Columbia',
+  FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois',
+  IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana',
+  ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota',
+  MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada',
+  NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York',
+  NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon',
+  PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota',
+  TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia',
+  WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', PR: 'Puerto Rico',
+};
+const ABBR_SET = new Set(Object.keys(STATE_NAMES));
+const NAME_TO_ABBR = Object.fromEntries(
+  Object.entries(STATE_NAMES).map(([a, n]) => [n.toLowerCase(), a]));
+
+// Normalize a state value (abbreviation or full name) to a 2-letter code.
+function toAbbr(s) {
+  const v = String(s || '').trim();
+  if (!v) return '';
+  if (ABBR_SET.has(v.toUpperCase())) return v.toUpperCase();
+  return NAME_TO_ABBR[v.toLowerCase()] || v.toUpperCase();
+}
+
 const PROFICIENCY_COLORS = {
   'expert':       '#22c55e',
   'advanced':     '#84cc16',
@@ -46,7 +71,8 @@ const DEFAULT_COLOR = '#38bdf8';
 let ZIPS = {};
 let STATES = {};
 let allRows = [];          // normalized rows with geo info
-let map, markerLayer, stateChart;
+let map, markerLayer, stateChart, stateLayer;
+const selectedStates = new Set();   // abbreviations selected for download
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -57,6 +83,7 @@ async function init() {
   initMap();
   await loadGeoData();
   wireUI();
+  updateSelectionUI();
   setStatus('Load your spreadsheet to plot prospects.');
 }
 
@@ -71,15 +98,51 @@ function initMap() {
 
 async function loadGeoData() {
   try {
-    const [z, s] = await Promise.all([
+    const [z, s, geo] = await Promise.all([
       fetch('data/zipcodes.min.json').then(r => r.json()),
       fetch('data/states.min.json').then(r => r.json()),
+      fetch('data/us-states.min.json').then(r => r.json()),
     ]);
     ZIPS = z; STATES = s;
+    addStateLayer(geo);
   } catch (e) {
     console.error('Could not load geo lookup data', e);
     setStatus('Warning: geo lookup data failed to load.');
   }
+}
+
+// Clickable state boundaries: click a state to select it for download.
+function addStateLayer(geo) {
+  stateLayer = L.geoJSON(geo, {
+    style: styleState,
+    onEachFeature: (feature, layer) => {
+      const abbr = feature.properties.abbr;
+      layer.on({
+        click: () => toggleState(abbr),
+        mouseover: () => { if (!selectedStates.has(abbr)) layer.setStyle({ fillOpacity: 0.15 }); },
+        mouseout: () => stateLayer.resetStyle(layer),
+      });
+      layer.bindTooltip(feature.properties.name, { sticky: true });
+    },
+  }).addTo(map);
+  stateLayer.bringToBack(); // keep markers clickable on top
+}
+
+function styleState(feature) {
+  const selected = selectedStates.has(feature.properties.abbr);
+  return {
+    color: selected ? '#38bdf8' : '#64748b',
+    weight: selected ? 2 : 1,
+    fillColor: '#38bdf8',
+    fillOpacity: selected ? 0.35 : 0.01, // ~invisible but keeps the area clickable
+  };
+}
+
+function toggleState(abbr) {
+  if (selectedStates.has(abbr)) selectedStates.delete(abbr);
+  else selectedStates.add(abbr);
+  if (stateLayer) stateLayer.setStyle(styleState);
+  updateSelectionUI();
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +182,8 @@ function normalizeRows(rawRows) {
 
     return {
       _i: i,
+      _raw: row,
+      stateAbbr: toAbbr(state),
       name: String(get(row, 'name') ?? '').trim(),
       email: String(get(row, 'email') ?? '').trim(),
       role: String(get(row, 'role') ?? '').trim(),
@@ -169,6 +234,7 @@ function loadRows(rawRows) {
   populateFilters();
   buildLegend();
   applyFilters();
+  updateSelectionUI();
 }
 
 function applyFilters() {
@@ -366,6 +432,54 @@ function updateChart(rows) {
 }
 
 // ---------------------------------------------------------------------------
+// State selection + download
+// ---------------------------------------------------------------------------
+function countInState(abbr) {
+  return allRows.reduce((n, r) => n + (r.stateAbbr === abbr ? 1 : 0), 0);
+}
+
+function updateSelectionUI() {
+  const chips = document.getElementById('selectedChips');
+  const btn = document.getElementById('downloadBtn');
+  const clear = document.getElementById('clearStates');
+  const list = [...selectedStates].sort();
+
+  if (!list.length) {
+    chips.innerHTML = '<span class="muted small">No states selected. Click states on the map.</span>';
+  } else {
+    chips.innerHTML = list.map(a => {
+      const c = countInState(a);
+      return `<span class="chip" data-abbr="${a}">${a} <small>${c}</small> <span class="x">&times;</span></span>`;
+    }).join('');
+    chips.querySelectorAll('.chip').forEach(el =>
+      el.addEventListener('click', () => toggleState(el.dataset.abbr)));
+  }
+
+  const total = list.reduce((n, a) => n + countInState(a), 0);
+  btn.disabled = !list.length || total === 0;
+  btn.textContent = list.length
+    ? `Download ${total} row${total === 1 ? '' : 's'} (${list.length} state${list.length === 1 ? '' : 's'})`
+    : 'Download selected states';
+  clear.style.display = list.length ? '' : 'none';
+}
+
+function downloadSelected() {
+  const rows = allRows.filter(r => selectedStates.has(r.stateAbbr)).map(r => r._raw);
+  if (!rows.length) return;
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Prospects');
+  const name = `prospects_${[...selectedStates].sort().join('-')}.xlsx`;
+  XLSX.writeFile(wb, name);
+}
+
+function clearSelectedStates() {
+  selectedStates.clear();
+  if (stateLayer) stateLayer.setStyle(styleState);
+  updateSelectionUI();
+}
+
+// ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
 function wireUI() {
@@ -374,6 +488,9 @@ function wireUI() {
     document.getElementById(id).addEventListener('change', applyFilters));
 
   document.getElementById('search').addEventListener('input', debounce(applyFilters, 200));
+
+  document.getElementById('downloadBtn').addEventListener('click', downloadSelected);
+  document.getElementById('clearStates').addEventListener('click', clearSelectedStates);
 
   const prog = document.getElementById('filterProgress');
   prog.addEventListener('input', () => {
